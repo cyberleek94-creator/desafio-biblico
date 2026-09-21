@@ -59,12 +59,37 @@ export async function onRequestPost({request,env}){
       },r.status);
     }
 
+    let transactionDetails=null;
+    try{
+      const txId=data.id||data.transaction_id;
+      if(txId){
+        const detail=await fetch(BRAVOPAY_BASE+"/transactions/"+encodeURIComponent(txId),{
+          headers:{"Authorization":"Bearer "+env.BRAVOPAY_API_KEY}
+        });
+        transactionDetails=await detail.json().catch(()=>null);
+      }
+    }catch(_e){}
+
+    let account=null;
+    try{
+      const me=await fetch(BRAVOPAY_BASE+"/me",{
+        headers:{"Authorization":"Bearer "+env.BRAVOPAY_API_KEY}
+      });
+      const meData=await me.json().catch(()=>null);
+      if(me.ok && meData){
+        account={id:meData.id||null,name:meData.name||null};
+      }
+    }catch(_e){}
+
     return json({
       transaction_id:data.id||data.transaction_id,
       status:data.status,
       amount_cents:data.amount_cents||990,
       copy_paste:data.pix?.copy_paste||data.pix_copy_paste||data.copy_paste||data.qr_code_copy_paste||"",
-      expires_at:data.pix?.expires_at||data.expires_at||null
+      expires_at:data.pix?.expires_at||data.expires_at||null,
+      payment_provider:transactionDetails?.provider||null,
+      payment_provider_id:transactionDetails?.provider_id||null,
+      bravopay_account:account
     });
   }catch(e){
     return json({error:"Erro ao criar PIX."},500);
