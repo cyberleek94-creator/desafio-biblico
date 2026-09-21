@@ -168,5 +168,14 @@ const QUESTION_PACKAGES={free:{label:"Grátis",size:20,price:"R$ 0,00"},100:{lab
   if(typeof start==='function') start();
   window.scrollTo({top:0,behavior:'smooth'});
 }
+(function(){
+  const paid=new URLSearchParams(location.search).get('paid')==='1' &&
+    localStorage.getItem('desafioBiblicoAccess')==='100';
+  if(paid){
+    const lp=document.getElementById('landingPage');
+    if(lp) lp.style.display='none';
+    start();
+  }
+})();
 </script></body>
 </html>
