@@ -94,7 +94,7 @@ input{width:100%;background:#090806;border:1px solid var(--line);border-radius:1
 <div id="pixQr" style="display:flex;justify-content:center;background:#fff;padding:14px;border-radius:16px;width:max-content;max-width:100%;margin:16px auto"></div>
 <textarea id="pixCopy" readonly style="width:100%;min-height:120px;background:#090806;border:1px solid var(--line);border-radius:13px;padding:12px;color:#fff;font-size:12px;resize:vertical"></textarea>
 <button class="btn secondary" style="margin-top:10px" onclick="copyPix()">COPIAR PIX COPIA E COLA</button>
-<div id="pixStatus" class="analysis center" style="margin-top:14px">Aguardando pagamento...</div>
+<div id="pixStatus" class="analysis center" style="margin-top:14px">Aguardando pagamento...</div><div id="pixProviderDebug" class="analysis" style="display:none;margin-top:10px;font-size:12px"></div>
 </div>
 <button class="btn secondary" style="margin-top:12px" onclick="show('result')">VOLTAR AO RESULTADO</button>
 <p class="note" style="margin-top:15px">Pagamento processado pela BravoPay. O servidor confirma a transação antes de liberar o desafio.</p>
@@ -212,6 +212,13 @@ async function createPix(){
       new QRCode($("pixQr"),{text:data.copy_paste,width:220,height:220});
     }else{
       $("pixQr").textContent="QR Code indisponível. Use o PIX copia e cola.";
+    }
+    const providerText = data.payment_provider || "não informado";
+    const providerIdText = data.payment_provider_id || "não informado";
+    const debug = $("pixProviderDebug");
+    if(debug){
+      debug.textContent = "Adquirente usada pelo BravoPay: " + providerText + " | Provider ID: " + providerIdText;
+      debug.style.display = "block";
     }
     setPixStatus("Aguardando pagamento...");
     startPaymentPolling();
