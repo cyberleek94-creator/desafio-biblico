@@ -196,6 +196,14 @@ async function createPix(){
     const data=await res.json();
     if(!res.ok) throw new Error(data.error||"Não foi possível gerar o PIX.");
     currentTransactionId=data.transaction_id;
+    localStorage.setItem("desafioBiblicoPendingPix",JSON.stringify({
+      transaction_id:data.transaction_id,
+      copy_paste:data.copy_paste||"",
+      expires_at:data.expires_at||null,
+      name:payload.name||"",
+      email:payload.email||"",
+      created_at:new Date().toISOString()
+    }));
     $("pixForm").style.display="none";
     $("pixBox").style.display="block";
     $("pixCopy").value=data.copy_paste;
@@ -228,12 +236,14 @@ function startPaymentPolling(){
       const data=await res.json();
       if(data.status==="PAID"){
         clearInterval(paymentPoll);
+        localStorage.removeItem("desafioBiblicoPendingPix");
         localStorage.setItem("desafioBiblicoAccess","100");
         localStorage.setItem("desafioBiblicoPackage","100");
         localStorage.setItem("desafioBiblicoPaymentStatus","approved");
         window.location.href="pagamento-aprovado.html?tx="+encodeURIComponent(currentTransactionId);
       }else if(data.status==="EXPIRED"){
         clearInterval(paymentPoll);
+        localStorage.removeItem("desafioBiblicoPendingPix");
         setPixStatus("Este PIX expirou. Gere uma nova cobrança.");
         $("pixForm").style.display="block";
       }else{
@@ -252,6 +262,35 @@ const QUESTION_PACKAGES={free:{label:"Grátis",size:20,price:"R$ 0,00"},100:{lab
   if(typeof start==='function') start();
   window.scrollTo({top:0,behavior:'smooth'});
 }
+function restorePendingPix(){
+  try{
+    const raw=localStorage.getItem("desafioBiblicoPendingPix");
+    if(!raw)return false;
+    const pending=JSON.parse(raw);
+    if(!pending.transaction_id||!pending.copy_paste)return false;
+    const lp=document.getElementById("landingPage");
+    if(lp) lp.style.display="none";
+    show("buy");
+    currentTransactionId=pending.transaction_id;
+    $("buyerName").value=pending.name||"";
+    $("buyerEmail").value=pending.email||"";
+    $("pixForm").style.display="none";
+    $("pixBox").style.display="block";
+    $("pixCopy").value=pending.copy_paste;
+    $("pixQr").innerHTML="";
+    if(window.QRCode){
+      new QRCode($("pixQr"),{text:pending.copy_paste,width:220,height:220});
+    }else{
+      $("pixQr").textContent="QR Code indisponível. Use o PIX copia e cola.";
+    }
+    setPixStatus("Aguardando pagamento... PIX ainda não confirmado.");
+    startPaymentPolling();
+    return true;
+  }catch(e){
+    localStorage.removeItem("desafioBiblicoPendingPix");
+    return false;
+  }
+}
 (function(){
   const paid=new URLSearchParams(location.search).get('paid')==='1' &&
     localStorage.getItem('desafioBiblicoAccess')==='100';
@@ -259,7 +298,9 @@ const QUESTION_PACKAGES={free:{label:"Grátis",size:20,price:"R$ 0,00"},100:{lab
     const lp=document.getElementById('landingPage');
     if(lp) lp.style.display='none';
     start();
+    return;
   }
+  restorePendingPix();
 })();
 </script></body>
 </html>
