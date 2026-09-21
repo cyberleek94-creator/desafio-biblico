@@ -22,7 +22,7 @@ input{width:100%;background:#090806;border:1px solid var(--line);border-radius:1
 </style>
 
 
-</head>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script></head>
 <body><style id="landing-page-css">
 #landingPage{min-height:100vh;background:radial-gradient(circle at 50% -10%,rgba(218,180,72,.16),transparent 38%),linear-gradient(180deg,#080806,#0d0c09 52%,#080806);color:#f7f1df;padding-bottom:70px}
 .lp-wrap{width:min(1120px,92%);margin:auto}.lp-nav{height:74px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.08)}.lp-brand{font-weight:800;letter-spacing:.08em;color:#d8b65b}.lp-brand span{color:#fff}
@@ -81,13 +81,23 @@ input{width:100%;background:#090806;border:1px solid var(--line);border-radius:1
 </div></section>
 
 <section id="buy" class="screen"><div class="card">
-<div class="center"><span class="badge">CHECKOUT</span></div>
-<h2 class="center">100 perguntas — R$ 9,90</h2>
-<p class="lead">Esta é a etapa de teste do fluxo. No checkout real, o pagamento será feito pela plataforma de pagamento.</p>
-<div class="quote">Depois que o pagamento for confirmado pelo servidor, a pessoa será redirecionada para a página de pagamento aprovado e o acesso às 100 perguntas será liberado.</div>
-<button class="btn primary" onclick="window.location.href='pagamento-aprovado.html?status=approved'">SIMULAR PAGAMENTO APROVADO</button>
-<button class="btn secondary" onclick="show('result')">VOLTAR AO RESULTADO</button>
-<p class="note" style="margin-top:15px">Modo de teste: nenhum pagamento real é realizado neste arquivo.</p>
+<div class="center"><span class="badge">PAGAMENTO PIX</span></div>
+<h2 class="center">Desafio completo — R$ 9,90</h2>
+<p class="lead">Gere agora um PIX exclusivo para esta compra. O acesso às 100 perguntas será liberado somente depois que o pagamento for confirmado.</p>
+<div id="pixForm">
+<input id="buyerName" maxlength="80" placeholder="Seu nome (opcional)">
+<input id="buyerEmail" type="email" maxlength="120" placeholder="Seu e-mail (opcional)" style="margin-top:10px">
+<button class="btn primary" style="margin-top:12px" onclick="createPix()">GERAR PIX DE R$ 9,90</button>
+</div>
+<div id="pixBox" style="display:none;margin-top:20px">
+<div class="quote center">Escaneie o QR Code ou copie o código PIX abaixo. Esta tela ficará verificando a confirmação automaticamente.</div>
+<div id="pixQr" style="display:flex;justify-content:center;background:#fff;padding:14px;border-radius:16px;width:max-content;max-width:100%;margin:16px auto"></div>
+<textarea id="pixCopy" readonly style="width:100%;min-height:120px;background:#090806;border:1px solid var(--line);border-radius:13px;padding:12px;color:#fff;font-size:12px;resize:vertical"></textarea>
+<button class="btn secondary" style="margin-top:10px" onclick="copyPix()">COPIAR PIX COPIA E COLA</button>
+<div id="pixStatus" class="analysis center" style="margin-top:14px">Aguardando pagamento...</div>
+</div>
+<button class="btn secondary" style="margin-top:12px" onclick="show('result')">VOLTAR AO RESULTADO</button>
+<p class="note" style="margin-top:15px">Pagamento processado pela BravoPay. O servidor confirma a transação antes de liberar o desafio.</p>
 </div></section>
 
 </div>
@@ -159,8 +169,82 @@ function result(){
  $("review").innerHTML=ans.slice(0,4).map((x,n)=>`<div class="review-item"><strong>${n+1}. ${x.q.q}</strong><div class="${x.correct?"righttxt":"wrongtxt"}">${x.correct?"✓ Você acertou":"✕ Você errou"}</div>${x.correct?"":`<div class="explain"><b>Resposta correta:</b> ${x.q.a[x.q.c]}<br>${x.q.e}</div>`}</div>`).join("");
 }
 function goToCheckout(){ show("buy"); window.scrollTo({top:0,behavior:"smooth"}); }
-function simulateApprovedPayment(){
-  window.location.href="pagamento-aprovado.html?status=approved";
+
+const PAYMENT_API_BASE="__PAYMENT_API_BASE__";
+let currentTransactionId=null;
+let paymentPoll=null;
+
+function setPixStatus(text){
+  const el=$("pixStatus"); if(el) el.textContent=text;
+}
+
+async function createPix(){
+  const btn=document.querySelector('#pixForm .primary');
+  if(btn){btn.disabled=true;btn.textContent="GERANDO PIX...";}
+  setPixStatus("Gerando sua cobrança PIX...");
+  try{
+    const payload={
+      name:$("buyerName").value.trim(),
+      email:$("buyerEmail").value.trim(),
+      external_reference:"quiz_"+Date.now()+"_"+Math.random().toString(36).slice(2,10)
+    };
+    const res=await fetch(PAYMENT_API_BASE+"/api/create-pix",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(payload)
+    });
+    const data=await res.json();
+    if(!res.ok) throw new Error(data.error||"Não foi possível gerar o PIX.");
+    currentTransactionId=data.transaction_id;
+    $("pixForm").style.display="none";
+    $("pixBox").style.display="block";
+    $("pixCopy").value=data.copy_paste;
+    $("pixQr").innerHTML="";
+    if(window.QRCode){
+      new QRCode($("pixQr"),{text:data.copy_paste,width:220,height:220});
+    }else{
+      $("pixQr").textContent="QR Code indisponível. Use o PIX copia e cola.";
+    }
+    setPixStatus("Aguardando pagamento...");
+    startPaymentPolling();
+  }catch(err){
+    setPixStatus(err.message||"Erro ao gerar o PIX.");
+    if(btn){btn.disabled=false;btn.textContent="GERAR PIX DE R$ 9,90";}
+  }
+}
+
+async function copyPix(){
+  const value=$("pixCopy").value;
+  try{await navigator.clipboard.writeText(value);setPixStatus("PIX copiado. Agora é só realizar o pagamento.");}
+  catch(e){$("pixCopy").select();document.execCommand("copy");setPixStatus("PIX copiado.");}
+}
+
+function startPaymentPolling(){
+  if(paymentPoll) clearInterval(paymentPoll);
+  const check=async()=>{
+    if(!currentTransactionId)return;
+    try{
+      const res=await fetch(PAYMENT_API_BASE+"/api/payment-status?tx="+encodeURIComponent(currentTransactionId),{cache:"no-store"});
+      const data=await res.json();
+      if(data.status==="PAID"){
+        clearInterval(paymentPoll);
+        localStorage.setItem("desafioBiblicoAccess","100");
+        localStorage.setItem("desafioBiblicoPackage","100");
+        localStorage.setItem("desafioBiblicoPaymentStatus","approved");
+        window.location.href="pagamento-aprovado.html?tx="+encodeURIComponent(currentTransactionId);
+      }else if(data.status==="EXPIRED"){
+        clearInterval(paymentPoll);
+        setPixStatus("Este PIX expirou. Gere uma nova cobrança.");
+        $("pixForm").style.display="block";
+      }else{
+        setPixStatus("Aguardando pagamento... PIX ainda não confirmado.");
+      }
+    }catch(e){
+      setPixStatus("Verificando pagamento...");
+    }
+  };
+  check();
+  paymentPoll=setInterval(check,5000);
 }
 const QUESTION_PACKAGES={free:{label:"Grátis",size:20,price:"R$ 0,00"},100:{label:"100 perguntas",size:100,price:"R$ 9,90"}}; let activePackage=Number(localStorage.getItem("desafioBiblicoPackage")||0); function getAvailableBank(){return activePackage===100?bank.slice(0,100):bank.slice(0,20)} function startLandingQuiz(){
   const lp=document.getElementById('landingPage');
